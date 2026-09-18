@@ -1,0 +1,171 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.basketball"
+        ],
+        "components": [
+          {
+            "/": "/launch/56cc5369-804b-4091-8081-1d5b47a616bc",
+            "comment": "Exact launch path for basketball."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.bouncerboss"
+        ],
+        "components": [
+          {
+            "/": "/launch/e2b367fd-2f87-4ecd-bebc-d4c61fa35475",
+            "comment": "Exact launch path for bouncer-boss."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.citybuilder3d"
+        ],
+        "components": [
+          {
+            "/": "/launch/2ac573e4-9b4b-43e6-adc8-55a576323cc5",
+            "comment": "Exact launch path for city-builder-3d."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.crowdarean"
+        ],
+        "components": [
+          {
+            "/": "/launch/4bbb6564-89b3-4cc7-ab4a-0860fdd014d7",
+            "comment": "Exact launch path for crowd-arena."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.holofit"
+        ],
+        "components": [
+          {
+            "/": "/launch/9fd0ca75-9a2a-41e1-b887-f79f3c6b34d0",
+            "comment": "Exact launch path for holofit."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.jailboss"
+        ],
+        "components": [
+          {
+            "/": "/launch/a83ec22b-80ad-40b2-a916-d722f367c139",
+            "comment": "Exact launch path for jail-boss."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.juiceninja"
+        ],
+        "components": [
+          {
+            "/": "/launch/2f9c126b-ebf2-4ccd-b5a7-5ade33fe508b",
+            "comment": "Exact launch path for juice-ninja."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.kickoff"
+        ],
+        "components": [
+          {
+            "/": "/launch/a53fae49-e4e1-4cad-a078-641876ad6e97",
+            "comment": "Exact launch path for kickoff."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.operationfirestorm"
+        ],
+        "components": [
+          {
+            "/": "/launch/b7334229-c480-44c0-928d-016540e73e3c",
+            "comment": "Exact launch path for operation-firestorm."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.roadrampage"
+        ],
+        "components": [
+          {
+            "/": "/launch/1ab1ebd1-66a5-49dd-bdc2-ab8f444b0c0f",
+            "comment": "Exact launch path for road-rampage."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.rushline"
+        ],
+        "components": [
+          {
+            "/": "/launch/47601ef4-1f9f-469a-be81-0b608f831aaf",
+            "comment": "Exact launch path for rush-line."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.streetshootout"
+        ],
+        "components": [
+          {
+            "/": "/launch/2f1476a6-8eab-4c3d-9209-1bb1ab7d4e42",
+            "comment": "Exact launch path for street-shootout."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.survivalrush"
+        ],
+        "components": [
+          {
+            "/": "/launch/4c6a4c2b-07e7-43b8-805f-c92335227ef7",
+            "comment": "Exact launch path for survival-rush."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.tennis"
+        ],
+        "components": [
+          {
+            "/": "/launch/f07ff931-5e22-4414-a399-a85ec3c55b97",
+            "comment": "Exact launch path for tennis-titans."
+          }
+        ]
+      },
+      {
+        "appIDs": [
+          "82K69CSWA7.com.godofgaming.whackamole"
+        ],
+        "components": [
+          {
+            "/": "/launch/db26d5ba-2f51-445a-beac-99ba4cbb4558",
+            "comment": "Exact launch path for whack-a-mole."
+          }
+        ]
+      }
+    ]
+  }
+}

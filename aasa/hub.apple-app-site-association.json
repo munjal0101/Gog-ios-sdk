@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "82K69CSWA7.online.godofgaming.hub"
+        ],
+        "components": [
+          {
+            "/": "/auth",
+            "comment": "Hub sign-in."
+          }
+        ]
+      }
+    ]
+  }
+}

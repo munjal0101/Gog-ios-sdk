@@ -1,0 +1,14 @@
+.build/
+.build-ios/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+dist/*.xcframework
+dist/*.zip
+.DS_Store
+
+# Local-only: old release archives, their manifest, and editor/agent settings
+*.tar.gz
+MANIFEST.sha256
+.claude/
