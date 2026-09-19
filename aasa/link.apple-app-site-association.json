@@ -156,5 +156,23 @@
         ]
       }
     ]
+  },
+  "webcredentials": {
+    "apps": [
+      "82K69CSWA7.com.godofgaming.basketball",
+      "82K69CSWA7.com.godofgaming.bouncerboss",
+      "82K69CSWA7.com.godofgaming.citybuilder3d",
+      "82K69CSWA7.com.godofgaming.holofit",
+      "82K69CSWA7.com.godofgaming.jailboss",
+      "82K69CSWA7.com.godofgaming.juiceninja",
+      "82K69CSWA7.com.godofgaming.kickoff",
+      "82K69CSWA7.com.godofgaming.operationfirestorm",
+      "82K69CSWA7.com.godofgaming.roadrampage",
+      "82K69CSWA7.com.godofgaming.rushline",
+      "82K69CSWA7.com.godofgaming.streetshootout",
+      "82K69CSWA7.com.godofgaming.survivalrush",
+      "82K69CSWA7.com.godofgaming.tennis",
+      "82K69CSWA7.com.godofgaming.whackamole"
+    ]
   }
 }
