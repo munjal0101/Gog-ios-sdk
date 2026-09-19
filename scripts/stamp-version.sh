@@ -16,18 +16,25 @@ gog_assert_version_format "$VERSION" || exit 1
 FILE="Sources/GOG/GogSDKVersion.swift"
 [[ -f "$FILE" ]] || { echo "FAIL: $FILE not found" >&2; exit 1; }
 
-# Rewrite the one line. Deliberately anchored on the exact declaration rather than a loose
-# match, so a future edit that moves it fails here instead of silently stamping nothing.
-grep -q '^    public static let value = "' "$FILE" || {
-  echo "FAIL: could not find the version declaration in $FILE — it moved or was renamed" >&2
-  exit 1
-}
+# Rewrite the two lines: `value`, and `compiled` — the same version as a StaticString so it
+# lands in the binary as text (see GogSDKVersion.swift). Deliberately anchored on the exact
+# declarations rather than a loose match, so a future edit that moves either fails here
+# instead of silently stamping nothing.
+for decl in 'public static let value = "' 'static let compiled: StaticString = "'; do
+  grep -q "^    $decl" "$FILE" || {
+    echo "FAIL: could not find \`$decl…\` in $FILE — it moved or was renamed" >&2
+    exit 1
+  }
+done
 tmp="$(mktemp)"
-sed 's|^    public static let value = ".*"$|    public static let value = "'"$VERSION"'"|' \
+sed -e 's|^    public static let value = ".*"$|    public static let value = "'"$VERSION"'"|' \
+    -e 's|^    static let compiled: StaticString = ".*"$|    static let compiled: StaticString = "'"$VERSION"'"|' \
   "$FILE" > "$tmp"
 mv "$tmp" "$FILE"
 
-# Read back. Stamping that reports success without changing anything is the failure mode
-# this guards.
+# Read back BOTH. Stamping that reports success without changing anything is the failure
+# mode this guards, and two lines that disagree would be a version square inside one file.
 STAMPED="$(sed -n 's|^    public static let value = "\(.*\)"$|\1|p' "$FILE")"
-gog_assert_version "$STAMPED" "$VERSION" "GogSDKVersion.swift" || exit 1
+gog_assert_version "$STAMPED" "$VERSION" "GogSDKVersion.swift value" || exit 1
+COMPILED="$(sed -n 's|^    static let compiled: StaticString = "\(.*\)"$|\1|p' "$FILE")"
+gog_assert_version "$COMPILED" "$VERSION" "GogSDKVersion.swift compiled" || exit 1

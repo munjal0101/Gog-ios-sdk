@@ -56,8 +56,11 @@ Sources/GOG/
     LaunchLink.swift       host/path/segment validation (no code extraction)
   Internal/Crypto/
     SHA256.swift           CryptoKit on Apple; portable fallback for Linux CI
-Tests/GOGTests/            227 tests: Android regressions, account boundary, identity,
-                           hosts, ads, AdMob, playtime, launch codes, facade, parity gaps
+  Bridge/
+    GogUnityBridge.swift   the C ABI the Unity binding calls on iOS — auth + playtime ONLY
+Tests/GOGTests/            243 tests: Android regressions, account boundary, identity,
+                           hosts, ads, AdMob, playtime, launch codes, facade, parity gaps,
+                           the Unity bridge's wire format
 scripts/
   lib/slice-assertions.sh  pure assertion functions — testable without macOS
   selftest.sh              31 assertion tests; runs anywhere
@@ -78,6 +81,20 @@ One XCFramework, two front doors, one artifact:
 
 CocoaPods is deferred, not rejected: a podspec over an existing XCFramework is roughly a
 day's work if a partner asks for it.
+
+### The Unity door, concretely
+
+The product is declared `.dynamic`, so the archive is a real `GOG.framework` (the automatic
+type yields a bare `GOG.o`). Unity 6 imports the `.xcframework` from `Plugins/iOS` natively,
+and the package's `GogIosPostProcessor` embeds it, adds `applinks:link.godofgaming.online`,
+and writes the iOS AdMob app id.
+
+C# never sees Swift: `IosAuthBridge.cs` calls the `gog_bridge_*` C functions in
+`Bridge/GogUnityBridge.swift` through `[DllImport("__Internal")]`. That bridge boots
+`GogIdentity` and `GogPlaytime` and **nothing else** — coins and ads stay in C# on both
+platforms, exactly as on Android, so the Swift wallet and ad pipeline are never started twice.
+The version handshake reads `GogSDKVersion.compiled`, the same bytes the build's `strings`
+check verifies.
 
 ## The seven things this code exists to get right
 
@@ -233,7 +250,7 @@ cannot lie.
 
 ```bash
 swift build
-swift test                      # 227 tests, no network, no simulator, no Mac required
+swift test                      # 243 tests, no network, no simulator, no Mac required
 ./scripts/selftest.sh           # 31 build-script assertion tests, also anywhere
 ./scripts/typecheck-ios-shape.sh   # 15 checks: type-check the Apple-only code, on Linux
 

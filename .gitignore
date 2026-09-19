@@ -12,3 +12,5 @@ dist/*.zip
 *.tar.gz
 MANIFEST.sha256
 .claude/
+dist/archives/
+dist/derived/

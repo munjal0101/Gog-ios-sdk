@@ -37,7 +37,13 @@ let package = Package(
         .macOS(.v12),
     ],
     products: [
-        .library(name: "GOG", targets: ["GOG"]),
+        // `.dynamic`, explicitly. With the automatic type, `xcodebuild archive` emits a bare
+        // relocatable `GOG.o` — neither a framework nor a library — and there is nothing to put
+        // in an XCFramework. A dynamic framework also carries its own link against the Swift
+        // runtime (in the OS since iOS 12.2), so a Unity project, whose UnityFramework target
+        // has no Swift sources, links it without Swift search-path surgery; it is embedded and
+        // re-signed by the app like any other framework.
+        .library(name: "GOG", type: .dynamic, targets: ["GOG"]),
     ],
     targets: [
         .target(name: "GOG", path: "Sources/GOG"),

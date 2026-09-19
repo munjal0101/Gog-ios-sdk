@@ -41,7 +41,7 @@ done
 echo "══ stamping $VERSION ══"
 scripts/stamp-version.sh "$VERSION"
 
-rm -rf "$OUT/archives" "$OUT/$SCHEME.xcframework" "$OUT/$SCHEME.xcframework.zip"
+rm -rf "$OUT/archives" "$OUT/derived" "$OUT/$SCHEME.xcframework" "$OUT/$SCHEME.xcframework.zip"
 mkdir -p "$OUT/archives"
 
 # 🔴 Built UNSIGNED, deliberately — and this is what keeps the whole build off the critical
@@ -53,18 +53,29 @@ echo "══ archiving ══"
 # Two slices only: device arm64 and simulator arm64. x86_64 simulator is deliberately NOT
 # built — add it only if a partner is actually on an Intel Mac, and then assert it, rather
 # than carrying a slice nobody uses.
+#
+# 🔴 `-alias-module-names-in-module-interface` is REQUIRED, not tuning. The module is named
+# `GOG` and so is its public facade class. A library-evolution build emits a .swiftinterface
+# that spells every type fully qualified — `GOG.GogAds` — and inside that file `GOG` resolves
+# to the CLASS, not the module, so interface verification fails with "'GogAds' is not a member
+# type of class 'GOG.GOG'" and the archive aborts. The flag makes the compiler write the
+# module name as an alias that cannot collide. Renaming the class would break the frozen
+# public surface; this fixes the artifact instead.
 archive() {
   local dest="$1" name="$2"
   xcodebuild archive \
     -scheme "$SCHEME" \
     -destination "$dest" \
     -archivePath "$OUT/archives/$name" \
+    -derivedDataPath "$OUT/derived/$name" \
     -configuration Release \
     IPHONEOS_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
     MARKETING_VERSION="$VERSION" \
     CURRENT_PROJECT_VERSION="$VERSION" \
     SKIP_INSTALL=NO \
     BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+    OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -alias-module-names-in-module-interface' \
+    ARCHS=arm64 \
     CODE_SIGNING_ALLOWED=NO \
     CODE_SIGNING_REQUIRED=NO
 }
@@ -87,8 +98,19 @@ for name in device simulator; do
     plist="$fw/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$plist" 2>/dev/null \
       || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$plist"
+    # SwiftPM-built frameworks come out WITHOUT Modules/: xcodebuild leaves GOG.swiftmodule
+    # (the .swiftinterface a library-evolution build produced) in the build products. Unity
+    # does not need it — it calls the C ABI in Bridge/GogUnityBridge.swift — but a native Swift
+    # consumer on the SPM door cannot `import GOG` without it, so it goes in.
+    mod="$(find "$OUT/derived/$name" -type d -name "$SCHEME.swiftmodule" -path "*BuildProductsPath*" | head -1)"
+    if [[ -n "$mod" ]]; then
+      mkdir -p "$fw/Modules" && cp -R "$mod" "$fw/Modules/"
+    else
+      echo "FAIL: no $SCHEME.swiftmodule in the $name build products — the SPM door could not import this" >&2
+      exit 1
+    fi
     args+=(-framework "$fw")
-    echo "  $name: framework"
+    echo "  $name: framework (+ Modules/$SCHEME.swiftmodule)"
   elif [[ -n "$lib" ]]; then
     hdrs="$(find "$arch_dir" -type d -name include | head -1)"
     args+=(-library "$lib"); [[ -n "$hdrs" ]] && args+=(-headers "$hdrs")

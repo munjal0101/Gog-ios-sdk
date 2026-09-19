@@ -20,6 +20,16 @@
 public enum GogSDKVersion {
     public static let value = "0.0.0-unstamped"
 
+    /// `value` again, as NUL-terminated bytes in the binary.
+    ///
+    /// Swift keeps a `String` of 15 bytes or fewer INSIDE the instructions (the small-string
+    /// form), so a stamped "0.2.1" never appears as text and `strings` on the binary — the
+    /// release check that cannot lie — would never find it. A `StaticString` literal is always
+    /// emitted into `__TEXT,__cstring`. The stamp script writes both lines, a test pins them
+    /// equal, and the Unity bridge's handshake reads THIS one, so the version C# checks at boot
+    /// is the very bytes the release verification read.
+    static let compiled: StaticString = "0.0.0-unstamped"
+
     /// True when the release script has not run. Checked at configure time.
     static var isUnstamped: Bool { value == "0.0.0-unstamped" }
 }

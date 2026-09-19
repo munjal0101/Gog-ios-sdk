@@ -228,7 +228,11 @@ public final class GOG {
 
     // MARK: - Platform defaults
 
-    private static func defaultSecureStore() -> any SecureStore {
+    /// Internal, not private: the Unity bridge boots `GogIdentity` without this facade and must
+    /// land on the SAME Keychain service, or a game that moved between the two would restore
+    /// a signed-out player. `nonisolated` because the bridge is not on the main actor, and
+    /// nothing here needs it.
+    nonisolated static func defaultSecureStore() -> any SecureStore {
         #if canImport(Security)
         let service = (Bundle.main.bundleIdentifier ?? "com.gog.sdk") + ".gog.session"
         return KeychainSecureStore(service: service)

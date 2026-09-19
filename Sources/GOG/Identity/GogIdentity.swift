@@ -215,6 +215,18 @@ public actor GogIdentity {
 
     public var currentUser: GogUser? { loadSession()?.user }
 
+    /// The stored player, read synchronously.
+    ///
+    /// For callers that cannot `await` — the Unity binding's `GogAuth.CurrentSession` is a
+    /// plain C# property, answered over a synchronous C call. Reads the same single record
+    /// `currentSession` does, straight from the store; it never refreshes and never writes,
+    /// so it needs no isolation. The self-healing of an expired launch code is left to the
+    /// isolated reads — this one only ever looks at the session half.
+    nonisolated func storedUserSnapshot() -> GogUser? {
+        guard let data = (try? store.get(Self.sessionKey)) ?? nil else { return nil }
+        return StoredIdentity.decode(data)?.session?.user
+    }
+
     public var isSignedIn: Bool { loadSession() != nil }
 
     /// The authoritative session state. **Read this on launch** — do not gate on the
