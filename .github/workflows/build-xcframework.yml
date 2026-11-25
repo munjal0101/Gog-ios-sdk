@@ -1,0 +1,82 @@
+# Builds GOG.xcframework on a GitHub-hosted Mac — Xcode is required and is not available on
+# the Windows machines this SDK is otherwise developed on.
+#
+# 1. verify-on-mac.sh   — the real compile/test gate for the iOS-only code paths.
+# 2. build-xcframework  — stamped with the Unity package's version (krishmeister/gog-sdk
+#                         package.json), so GogSdk.Initialize()'s version handshake matches.
+# 3. verify-xcframework — checks the built artifact itself, not the sources.
+# 4. Publishes dist/GOG.xcframework as a zip on the `xcframework-dist` branch (one commit,
+#    replaced each run) and as a workflow artifact. The zip keeps the bundle byte-exact
+#    (zip -y preserves symlinks); unzip it into gog-sdk/Runtime/Plugins/iOS/.
+name: Build GOG.xcframework
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Sources/**'
+      - 'Package.swift'
+      - 'scripts/**'
+      - '.github/workflows/build-xcframework.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-xcframework
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Unity package version (version source for the stamp)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/krishmeister/gog-sdk/main/package.json -o "$RUNNER_TEMP/package.json"
+          VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$RUNNER_TEMP/package.json" | head -1)
+          echo "Unity package version: $VERSION"
+          echo "GOG_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Compile + test gate (verify-on-mac.sh)
+        run: bash scripts/verify-on-mac.sh
+
+      - name: Build GOG.xcframework
+        run: bash scripts/build-xcframework.sh --package-json "$RUNNER_TEMP/package.json"
+
+      - name: Verify the built framework
+        run: bash scripts/verify-xcframework.sh dist/GOG.xcframework "$GOG_VERSION"
+
+      - name: Package
+        run: |
+          cd dist
+          zip -qry GOG.xcframework.zip GOG.xcframework
+          shasum -a 256 GOG.xcframework.zip | tee GOG.xcframework.zip.sha256
+          echo "$GOG_VERSION" > VERSION
+          echo "$GITHUB_SHA" > SOURCE_COMMIT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GOG.xcframework-${{ env.GOG_VERSION }}
+          path: dist/GOG.xcframework.zip
+
+      - name: Publish to the xcframework-dist branch
+        run: |
+          mkdir "$RUNNER_TEMP/out"
+          cp dist/GOG.xcframework.zip dist/GOG.xcframework.zip.sha256 dist/VERSION dist/SOURCE_COMMIT "$RUNNER_TEMP/out/"
+          cd "$RUNNER_TEMP/out"
+          git init -q -b xcframework-dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "GOG.xcframework $GOG_VERSION from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" xcframework-dist
