@@ -119,13 +119,17 @@ step "4/6  test suite ON THE SIMULATOR — the first time any of this RUNS on Ap
 #   real UIKit behind it. Skipped cleanly if no simulator runtime is installed; a skip is
 #   not a pass and is reported as its own category.
 # ─────────────────────────────────────────────────────────────────────────────
-SIM="$(xcrun simctl list devices available 2>/dev/null \
-        | sed -n 's/^ *\(iPhone [^(]*\)(.*/\1/p' | sed 's/ *$//' | tail -1)"
-if [[ -z "$SIM" ]]; then
+# Pick the simulator by its UDID, not its name: a name can exist under several runtimes (or
+# carry trailing text from the listing), and "name=..." then matches nothing — "Unable to
+# find a device matching the provided destination specifier" on a GitHub-hosted Mac.
+SIM_LINE="$(xcrun simctl list devices available 2>/dev/null | grep -E '^ *iPhone ' | tail -1)"
+SIM="$(echo "$SIM_LINE" | sed -n 's/^ *\(iPhone [^(]*\)(.*/\1/p' | sed 's/ *$//')"
+SIM_ID="$(echo "$SIM_LINE" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1)"
+if [[ -z "$SIM_ID" ]]; then
   note "no iPhone simulator installed — Xcode > Settings > Platforms to add one"
 else
-  echo "        using simulator: $SIM"
-  xcodebuild test -scheme GOG -destination "platform=iOS Simulator,name=$SIM" \
+  echo "        using simulator: $SIM ($SIM_ID)"
+  xcodebuild test -scheme GOG -destination "platform=iOS Simulator,id=$SIM_ID" \
     CODE_SIGNING_ALLOWED=NO > "$LOGS/4-sim-tests.log" 2>&1
   if grep -q "TEST SUCCEEDED" "$LOGS/4-sim-tests.log"; then
     ok "simulator tests on $SIM — the SDK has now actually run on Apple"

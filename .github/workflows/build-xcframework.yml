@@ -47,6 +47,8 @@ jobs:
           echo "GOG_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Compile + test gate (verify-on-mac.sh)
+        env:
+          GOG_SDK_VERSION: ${{ env.GOG_VERSION }}   # its own xcframework step builds this version
         run: bash scripts/verify-on-mac.sh
 
       # Job logs need a signed-in GitHub user to read; annotations are visible to anyone who can

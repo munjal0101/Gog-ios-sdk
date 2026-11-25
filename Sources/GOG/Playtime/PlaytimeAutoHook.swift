@@ -70,18 +70,28 @@ final class PlaytimeAutoHook: NSObject, UIGestureRecognizerDelegate {
         observers.append(center.addObserver(
             forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.forward { await $0.onForeground() } }
-            // Re-attach: the key window can change (a new scene, a game that swaps windows),
-            // and an observer on a window nobody is touching sees nothing. Android re-installs
-            // on every onActivityResumed for the same reason, guarded by the same
-            // already-installed check.
-            MainActor.assumeIsolated { self?.attachInputObserver() }
+            // ONE isolated block, unwrapping `self` inside it (the same shape as the ticker
+            // below). Two separate `assumeIsolated` closures each capturing the weak `self`
+            // fail Swift 6 region checking: "sending 'self' risks causing data races".
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.forward { await $0.onForeground() }
+                // Re-attach: the key window can change (a new scene, a game that swaps windows),
+                // and an observer on a window nobody is touching sees nothing. Android re-installs
+                // on every onActivityResumed for the same reason, guarded by the same
+                // already-installed check.
+                self.attachInputObserver()
+            }
         })
 
         observers.append(center.addObserver(
             forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.forward { await $0.onBackground() } } })
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.forward { await $0.onBackground() }
+            }
+        })
 
         attachInputObserver()
 
