@@ -49,6 +49,22 @@ jobs:
       - name: Compile + test gate (verify-on-mac.sh)
         run: bash scripts/verify-on-mac.sh
 
+      # Job logs need a signed-in GitHub user to read; annotations are visible to anyone who can
+      # see the run. On failure, surface the gate's summary, compiler errors and failing tests
+      # as annotations so the cause is readable without downloading logs.
+      - name: Report gate failures as annotations
+        if: failure()
+        run: |
+          L=.build/gog-verify-logs
+          [ -f "$L/SUMMARY.txt" ] && grep -E '^FAIL' "$L/SUMMARY.txt" | head -10 | while IFS= read -r line; do echo "::error title=verify-on-mac::$line"; done
+          for f in "$L"/*.log; do
+            [ -f "$f" ] || continue
+            grep -E 'error:|: error |XCTAssert.*failed|Test Case .* failed|fatal error' "$f" | sort -u | head -15 | while IFS= read -r line; do
+              echo "::error title=$(basename "$f")::${line:0:600}"
+            done
+          done
+          ls -la "$L" || true
+
       - name: Build GOG.xcframework
         run: bash scripts/build-xcframework.sh --package-json "$RUNNER_TEMP/package.json"
 
