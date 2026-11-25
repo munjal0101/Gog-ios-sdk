@@ -45,6 +45,15 @@ for slice in $ACTUAL_SLICES; do
   if [[ -n "$plist" ]]; then
     got="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)"
     gog_assert_version "$got" "$VERSION" "$slice Info.plist" || rc=1
+    # The privacy manifest must sit at the framework root, be a valid plist, and declare the
+    # required-reason APIs this SDK uses.
+    pm="$(dirname "$plist")/PrivacyInfo.xcprivacy"
+    if [[ -f "$pm" ]]; then
+      plutil -lint "$pm" >/dev/null 2>&1 || { gog_fail "$slice: PrivacyInfo.xcprivacy is not a valid plist"; rc=1; }
+      gog_assert_privacy_manifest "$(cat "$pm")" || rc=1
+    else
+      gog_fail "$slice: GOG.framework has no PrivacyInfo.xcprivacy at its root"; rc=1
+    fi
   else
     echo "note: $slice is static-library packaged (no Info.plist); the binary check above is"
     echo "      the version authority for this slice."

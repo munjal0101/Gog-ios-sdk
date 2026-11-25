@@ -148,10 +148,10 @@ final class ParityGapTests: XCTestCase {
         let user = try await identity.signInWithGog()
         XCTAssertEqual(user.id, Self.user)
 
-        // The browser was pointed at the HUB host…
+        // The hub APP was opened (no web page, no email OTP)…
         let opened = await web.lastURL
-        XCTAssertEqual(opened?.host, GogHosts.hub)
-        XCTAssertEqual(opened?.path, "/auth")
+        XCTAssertEqual(opened?.scheme, GogHosts.hubAppScheme)
+        XCTAssertEqual(opened?.host, "game-auth")
         // …and the callback was expected on the LINK host, at this game's own path.
         let host = await web.lastCallbackHost
         let path = await web.lastCallbackPath

@@ -250,7 +250,7 @@ public final class GogCoins {
         // signInCancelled / launchLinkInvalid cannot arise on a wallet call at all; they are
         // listed only to keep this switch exhaustive, which is what makes a future error
         // case a compile error here rather than a silent default.
-        case .accountBanned, .signInCancelled, .launchLinkInvalid,
+        case .accountBanned, .signInCancelled, .hubNotInstalled, .launchLinkInvalid,
              .invalidOrExpiredCode, .signInInProgress:
             return false
         }

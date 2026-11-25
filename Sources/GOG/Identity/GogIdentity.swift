@@ -34,6 +34,13 @@ public actor GogIdentity {
     /// Dedupe marker for launch links — see `trySignInFromLaunch(url:)`.
     private var lastHandledLaunchURL: String?
 
+    /// The hub's App Store install handoff — see `trySignInFromInstallHandoff()`.
+    private let installHandoff: any InstallHandoffStore
+    /// The handoff code this process took from the Keychain. When the game was already
+    /// installed, the hub's launch link carries the SAME code, and it can arrive while that
+    /// code is being exchanged or after; the link path must not spend it a second time.
+    private var takenHandoffCode: String?
+
     // The captured launch code is NOT a field. It is written to the session record, because
     // the wait for the game to ask for it is unbounded and spans the most reapable moments of
     // a cold launch — see `PendingLaunchCode`.
@@ -45,6 +52,7 @@ public actor GogIdentity {
          store: any SecureStore,
          transport: any GogTransport,
          webAuth: (any WebAuthPresenter)? = nil,
+         installHandoff: (any InstallHandoffStore)? = nil,
          now: @escaping @Sendable () -> Date = { Date() }) throws {
         try configuration.validate()
         self.configuration = configuration
@@ -52,12 +60,23 @@ public actor GogIdentity {
         self.http = GogHTTP(baseURL: configuration.baseURL, transport: transport)
         self.pkce = PKCEFlowStore(store: store)
         self.webAuth = webAuth ?? GogIdentity.defaultWebAuthPresenter()
+        self.installHandoff = installHandoff ?? GogIdentity.defaultInstallHandoffStore()
         self.now = now
     }
 
+    private static func defaultInstallHandoffStore() -> any InstallHandoffStore {
+        // iOS only: the hub is an iPhone app, and macOS test runs must never touch a real Keychain.
+        #if canImport(Security) && os(iOS)
+        return KeychainInstallHandoffStore()
+        #else
+        return NoInstallHandoffStore()
+        #endif
+    }
+
     private static func defaultWebAuthPresenter() -> any WebAuthPresenter {
-        #if canImport(AuthenticationServices) && canImport(UIKit)
-        return ASWebAuthPresenterImpl()
+        // Sign-in goes through the Gully Games hub APP — never a web page with an email OTP.
+        #if canImport(UIKit)
+        return HubAppSignInPresenter()
         #else
         return UnavailableWebAuthPresenter()
         #endif
@@ -96,16 +115,17 @@ public actor GogIdentity {
 
     /// Sign in through the hub — the full reverse handoff, end to end.
     ///
-    /// Mints and persists the PKCE pair, opens the hub's web sign-in in a contained browser,
-    /// receives the callback, validates it as this game's launch link, and exchanges.
+    /// Mints and persists the PKCE pair, opens the Gully Games hub APP (where the player is
+    /// already signed in — no web page, no email one-time password), receives the hub's answer
+    /// through this game's own launch link, validates it, and exchanges.
     ///
-    /// ⚠️ On iOS this runs on `ASWebAuthenticationSession`, whose https callback requires the
-    /// Associated Domains entitlement for `link.godofgaming.online`. Without it the session
-    /// refuses to start and this throws `.notConfigured` saying so — it does not fail
-    /// obscurely.
+    /// ⚠️ The answer is a Universal Link on `link.godofgaming.online`, so the game needs the
+    /// Associated Domains entitlement for that host, and must pass incoming links to
+    /// `trySignInFromLaunch(url:)` (the Unity package does this). Throws `.hubNotInstalled`
+    /// (after opening the hub's App Store page) when there is no hub, and `.signInCancelled`
+    /// when the player comes back without finishing.
     ///
-    /// - Parameter switchAccount: force a clean browser session, discarding shared Safari
-    ///   cookies. The "not you? use a different account" path.
+    /// - Parameter switchAccount: kept for API stability; the hub app decides the account.
     @discardableResult
     public func signInWithGog(switchAccount: Bool = false) async throws -> GogUser {
         guard !isSignInInProgress else { throw GogError.signInInProgress }
@@ -265,10 +285,25 @@ public actor GogIdentity {
         let key = url.absoluteString
         if key == lastHandledLaunchURL { return true }
 
+        // A "Sign in with GOG" waiting on the hub app takes its answer here: the hub replies
+        // through this very link. That sign-in validates and exchanges it WITH its verifier.
+        if let receiver = webAuth as? LaunchCallbackReceiver, receiver.deliver(url) {
+            lastHandledLaunchURL = key
+            return true
+        }
+
         do {
             let code = try LaunchLinkValidator.extractCode(
                 from: link.url, delimiter: configuration.launchCodeDelimiter)
             lastHandledLaunchURL = key
+
+            // The hub left this same code in the shared Keychain for the App Store case. The
+            // link got here first, so that copy is spent: drop it, or the next cold start
+            // would try it again and report a spurious failure.
+            installHandoff.discard(gameId: configuration.gameId)
+            // ...unless the install path already took this code and is exchanging (or has
+            // exchanged) it: the player is, or is about to be, signed in by that path.
+            if code == takenHandoffCode { return true }
 
             guard configuration.autoSignInFromLaunch else {
                 // Manual mode: capture, do not exchange. The game calls
@@ -314,6 +349,33 @@ public actor GogIdentity {
     /// Survives process death — a code captured before a jetsam is still here on relaunch,
     /// within its 120s life.
     public var hasCapturedLaunchCode: Bool { loadPendingLaunchCode() != nil }
+
+    /// Sign in with the code the hub left in the team-shared Keychain before sending the player
+    /// to the App Store — so a game installed from the hub opens already signed in to the hub's
+    /// account. See `InstallHandoff.swift` for the contract.
+    ///
+    /// Safe to call on every launch. Returns `false`, silently, when there is nothing to do:
+    /// no code, a code past its expiry, a player already signed in, or a launch link already
+    /// handled in this process (the link carried the same code). The stored code is deleted
+    /// in every case — it is single-use, and a stale one must never be retried.
+    @discardableResult
+    public func trySignInFromInstallHandoff() async throws -> Bool {
+        guard let handoff = installHandoff.take(gameId: configuration.gameId) else { return false }
+        if loadSession() != nil { return false }        // never replace an existing session
+        if lastHandledLaunchURL != nil { return false } // the launch link already spent it
+        if let expiry = handoff.expiresAt, expiry <= now() { return false }
+
+        takenHandoffCode = handoff.code
+        await events.emit(.signInStarted)
+        do {
+            _ = try await signIn(code: handoff.code, flow: .forwardLaunch)
+            return true
+        } catch let error as GogError {
+            // Same broadcast as a launch link: there is no explicit caller to return it to.
+            await events.emit(.launchSignInFailed(error))
+            throw error
+        }
+    }
 
     private func exchangeLaunchCode(_ code: String) async throws -> GogUser {
         // The reverse-handoff return leg lands on the SAME path as a forward launch, so the

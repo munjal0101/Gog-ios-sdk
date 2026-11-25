@@ -123,3 +123,26 @@ gog_assert_version_format() {
     gog_fail "refusing to build with the unstamped placeholder version"; return 1; }
   gog_ok "version '$v'"
 }
+
+# ── privacy manifest ─────────────────────────────────────────────────────────
+# gog_assert_privacy_manifest <manifest-text>
+#
+# App Store Connect flags a binary SDK that uses a required-reason API without declaring it
+# (ITMS-91053). This SDK uses two: UserDefaults (CA92.1) and system boot time via
+# ProcessInfo.systemUptime (35F9.1). Each category must appear WITH its reason code — a
+# category with no reason is rejected just the same.
+gog_assert_privacy_manifest() {
+  local text="$1"
+  [[ -n "$text" ]] || { gog_fail "privacy manifest is empty or missing"; return 1; }
+  printf '%s' "$text" | grep -q '<key>NSPrivacyTracking</key>' || {
+    gog_fail "privacy manifest has no NSPrivacyTracking key"; return 1; }
+  printf '%s' "$text" | grep -q 'NSPrivacyAccessedAPICategoryUserDefaults' || {
+    gog_fail "privacy manifest does not declare UserDefaults"; return 1; }
+  printf '%s' "$text" | grep -q '<string>CA92.1</string>' || {
+    gog_fail "privacy manifest declares UserDefaults without reason CA92.1"; return 1; }
+  printf '%s' "$text" | grep -q 'NSPrivacyAccessedAPICategorySystemBootTime' || {
+    gog_fail "privacy manifest does not declare SystemBootTime (systemUptime)"; return 1; }
+  printf '%s' "$text" | grep -q '<string>35F9.1</string>' || {
+    gog_fail "privacy manifest declares SystemBootTime without reason 35F9.1"; return 1; }
+  gog_ok "privacy manifest declares UserDefaults/CA92.1 and SystemBootTime/35F9.1"
+}

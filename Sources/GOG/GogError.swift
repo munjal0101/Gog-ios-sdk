@@ -88,8 +88,12 @@ public enum GogError: Error, Equatable, Sendable {
     /// forever. `GET /auth/ban-status/:userId` gives the detail.
     case accountBanned
 
-    /// The player dismissed the web sign-in without completing it. Not a failure — a choice.
+    /// The player left the hub without completing sign-in. Not a failure — a choice.
     case signInCancelled
+
+    /// "Sign in with GOG" needs the Gully Games hub app, and it is not installed. The SDK has
+    /// already opened the hub's App Store page; the game carries on signed out.
+    case hubNotInstalled
 
     /// The SSO code was rejected at exchange: bad, expired, already consumed, wrong game, or
     /// the PKCE verifier did not match. The server returns ONE opaque 401 for every one of
@@ -161,6 +165,7 @@ extension GogError: CustomStringConvertible {
         case .malformedResponse(let f):return "malformedResponse(missingField: \(f ?? "nil"))"
         case .accountBanned:           return "accountBanned"
         case .signInCancelled:         return "signInCancelled"
+        case .hubNotInstalled:         return "hubNotInstalled"
         case .invalidOrExpiredCode:    return "invalidOrExpiredCode"
         case .signInInProgress:        return "signInInProgress"
         case .launchLinkInvalid(let p):return "launchLinkInvalid(\(p))"

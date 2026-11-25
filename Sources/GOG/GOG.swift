@@ -124,7 +124,13 @@ public final class GOG {
             // `resumePendingHandoff` at the tail of its own initialize. Unconditional and
             // ahead of everything else that reads stored state, so a verifier or a code left
             // by a flow nobody finished cannot outlive its bound just because no one asked.
-            Task { await identity.sweepStaleSignInState() }
+            Task {
+                await identity.sweepStaleSignInState()
+                // A game installed from the hub opens signed in to the hub's account: the hub
+                // left a single-use code in the team-shared Keychain before the App Store trip.
+                // Silent no-op when there is none. Failures surface as launchSignInFailed.
+                _ = try? await identity.trySignInFromInstallHandoff()
+            }
 
             // Settle any wallet operation whose outcome was unknown when the process last
             // died. Detached: a reconciliation problem must never fail or delay initialize.

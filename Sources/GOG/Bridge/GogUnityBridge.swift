@@ -84,6 +84,21 @@ struct UnityBridgeCore: Sendable {
         }
     }
 
+    /// `GogAuth` on iOS, right after `Initialize()`: the hub's App Store install handoff.
+    ///
+    /// Same result shape as a launch link: `handled: false` means there was nothing to do
+    /// (no code, expired, already signed in), and the game simply carries on.
+    func signInFromInstallHandoff() async -> String {
+        do {
+            guard try await identity.trySignInFromInstallHandoff() else {
+                return BridgeResult.launch(handled: false, user: nil)
+            }
+            return BridgeResult.launch(handled: true, user: await identity.currentUser)
+        } catch {
+            return BridgeResult.failure(error)
+        }
+    }
+
     func signOut() async { await identity.signOut() }
 
     /// `GogAuth.CurrentSession` is a plain property on the C# side, so this is synchronous.
@@ -175,6 +190,7 @@ enum BridgeResult {
         case .malformedResponse:    return "malformed_response"
         case .accountBanned:        return "account_banned"
         case .signInCancelled:      return "sign_in_cancelled"
+        case .hubNotInstalled:      return "hub_not_installed"
         case .invalidOrExpiredCode: return "invalid_or_expired_code"
         case .signInInProgress:     return "sign_in_in_progress"
         case .launchLinkInvalid:    return "launch_link_invalid"
@@ -415,6 +431,16 @@ public func _gogBridgeHandleLaunchURL(_ requestId: Int32,
         return reply.send(BridgeResult.launch(handled: false, user: nil))
     }
     Task { reply.send(await bridge.handleLaunch(url: parsed)) }
+}
+
+/// The hub's App Store install handoff. The binding calls this once, right after
+/// `gog_bridge_initialize`; the reply has the same `{handled, user}` shape as a launch link.
+@_cdecl("gog_bridge_sign_in_from_install_handoff")
+public func _gogBridgeSignInFromInstallHandoff(_ requestId: Int32, _ callback: GogBridgeCallback?) {
+    guard let callback else { return }
+    let reply = BridgeReply(requestId: requestId, callback: callback)
+    guard let bridge = UnityBridgeHost.shared.current else { return reply.send(BridgeResult.notInitialized) }
+    Task { reply.send(await bridge.signInFromInstallHandoff()) }
 }
 
 /// 1 when `url` is this game's launch link, else 0. Synchronous.

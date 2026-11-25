@@ -33,6 +33,15 @@ public enum GogHosts {
 
     static let launchPathPrefix = "/launch/"
     static let authPath = "/auth"
+
+    /// The Gully Games hub APP's own URL scheme. "Sign in with GOG" opens
+    /// `gullygames://game-auth?…` — sign-in happens in the app the player is already signed in
+    /// to, never on a web page with an email one-time password.
+    public static let hubAppScheme = "gullygames"
+    static let hubAppAuthHost = "game-auth"
+
+    /// The hub's App Store page, opened when "Sign in with GOG" finds no hub installed.
+    public static let hubAppStoreURL = URL(string: "https://apps.apple.com/app/id6823139981")!
 }
 
 /// Where the launch code rides in the URL.
@@ -61,7 +70,7 @@ public enum LaunchCodeDelimiter: String, Sendable, Equatable {
 
 /// A request to hand the player to the hub for sign-in.
 public struct ReverseHandoffRequest: Sendable, Equatable {
-    /// Open this with `ASWebAuthenticationSession`. Always on the hub host.
+    /// Open this with `UIApplication.open`: it opens the Gully Games hub app.
     public let url: URL
     /// The S256 challenge sent to the hub. Its verifier is already persisted.
     public let codeChallenge: String
@@ -69,16 +78,16 @@ public struct ReverseHandoffRequest: Sendable, Equatable {
 
 /// Builds the hub-facing URL. One place, so the host cannot drift.
 public enum GogHubURL {
-    /// `https://hub.godofgaming.online/auth?game_id=<uuid>&code_challenge=<base64url-sha256>`
+    /// `gullygames://game-auth?game_id=<uuid>&code_challenge=<base64url-sha256>` — opens the
+    /// hub APP, which answers through this game's launch link on `GogHosts.link`.
     ///
     /// There is deliberately NO `redirect_uri` parameter. The hub derives the return target
     /// from `game_id` against the catalogue, never from the caller, which makes the entire
     /// open-redirect class structurally absent rather than defended against.
     public static func reverseHandoff(gameId: UUID, codeChallenge: String) -> URL {
         var components = URLComponents()
-        components.scheme = "https"
-        components.host = GogHosts.hub
-        components.path = GogHosts.authPath
+        components.scheme = GogHosts.hubAppScheme
+        components.host = GogHosts.hubAppAuthHost
         components.queryItems = [
             URLQueryItem(name: "game_id", value: gameId.uuidString.lowercased()),
             URLQueryItem(name: "code_challenge", value: codeChallenge),

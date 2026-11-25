@@ -109,12 +109,21 @@ for name in device simulator; do
       echo "FAIL: no $SCHEME.swiftmodule in the $name build products — the SPM door could not import this" >&2
       exit 1
     fi
+    # Privacy manifest at the framework ROOT — where App Store Connect looks for a binary SDK's
+    # manifest. Missing it gets the upload flagged (ITMS-91053) for the required-reason APIs
+    # this SDK uses (UserDefaults, systemUptime).
+    manifest="Sources/$SCHEME/PrivacyInfo.xcprivacy"
+    [[ -f "$manifest" ]] || { echo "FAIL: $manifest missing" >&2; exit 1; }
+    cp "$manifest" "$fw/PrivacyInfo.xcprivacy"
     args+=(-framework "$fw")
-    echo "  $name: framework (+ Modules/$SCHEME.swiftmodule)"
+    echo "  $name: framework (+ Modules/$SCHEME.swiftmodule, + PrivacyInfo.xcprivacy)"
   elif [[ -n "$lib" ]]; then
     hdrs="$(find "$arch_dir" -type d -name include | head -1)"
     args+=(-library "$lib"); [[ -n "$hdrs" ]] && args+=(-headers "$hdrs")
     echo "  $name: static library (no Info.plist; the compiled-in constant is the version authority)"
+    echo "  WARNING: a static library cannot carry PrivacyInfo.xcprivacy — the game must add" >&2
+    echo "           Sources/$SCHEME/PrivacyInfo.xcprivacy to its own app target, or App Review" >&2
+    echo "           will flag the SDK's UserDefaults / systemUptime use." >&2
   else
     echo "FAIL: $name archive contains neither $SCHEME.framework nor lib$SCHEME.a" >&2
     exit 1

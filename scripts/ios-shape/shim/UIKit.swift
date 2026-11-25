@@ -199,6 +199,7 @@ public struct UIInterfaceOrientationMask: OptionSet, Sendable {
                      options: [OpenExternalURLOptionsKey: Any] = [:],
                      completionHandler: ((Bool) -> Void)? = nil) {}
     nonisolated public static let didBecomeActiveNotification = Notification.Name("UIApplicationDidBecomeActive")
+    nonisolated public static let willResignActiveNotification = Notification.Name("UIApplicationWillResignActive")
     nonisolated public static let didEnterBackgroundNotification = Notification.Name("UIApplicationDidEnterBackground")
     nonisolated public static let willEnterForegroundNotification = Notification.Name("UIApplicationWillEnterForeground")
 }

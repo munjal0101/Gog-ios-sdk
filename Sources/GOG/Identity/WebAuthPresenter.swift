@@ -1,149 +1,169 @@
 import Foundation
 
-/// Presents the hub's web sign-in and returns the URL it calls back with.
+/// Runs the hub side of "Sign in with GOG" and returns the launch link it comes back with.
 ///
 /// Behind a protocol for the usual reason: everything around it — building the hub URL,
 /// persisting the PKCE verifier, validating the return, extracting the code, exchanging it —
-/// is then testable with no browser, no entitlement and no Apple account. Only the
-/// presentation needs a device.
+/// is then testable with no hub, no entitlement and no Apple account. Only the app switch
+/// needs a device.
+///
+/// (The name predates the hub app: sign-in used to run on a web page with an email one-time
+/// password. That page is gone from games; sign-in now goes through the Gully Games app.)
 protocol WebAuthPresenter: Sendable {
-    /// Open `url` in a contained browser and resolve with the callback URL.
+    /// Open the hub with `url` and resolve with the launch link the hub sends back.
     ///
-    /// Throws `GogError.signInCancelled` when the player dismisses it.
+    /// Throws `GogError.signInCancelled` when the player comes back without completing, and
+    /// `GogError.hubNotInstalled` when there is no hub to open.
     ///
-    /// - Parameter switchAccount: discard shared browser cookies for this attempt.
+    /// - Parameter switchAccount: kept for API stability; the hub app decides the account.
     func authenticate(url: URL, callbackHost: String, callbackPath: String,
                       switchAccount: Bool) async throws -> URL
 }
 
-/// One-shot latch. Main-actor confined by use — `ASWebAuthenticationSession` calls its
-/// completion handler on the main queue, and the only other claimant runs there too.
-final class OneShot {
+/// A presenter that is waiting for the hub to answer through this game's launch link.
+///
+/// The hub cannot hand a result back in-process the way Android's activity result does: it
+/// opens `https://link.godofgaming.online/launch/<game>#code=…`, which iOS delivers to the
+/// game like any other Universal Link. `GogIdentity.trySignInFromLaunch(url:)` offers every
+/// launch link here first; a waiting sign-in takes it and finishes the exchange itself.
+protocol LaunchCallbackReceiver: Sendable {
+    /// True when a sign-in was waiting and has taken `url`.
+    func deliver(_ url: URL) -> Bool
+}
+
+/// One-shot latch. True for exactly one caller, ever.
+final class OneShot: @unchecked Sendable {
+    private let lock = NSLock()
     private var taken = false
-    /// True for exactly one caller, ever.
     func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
         if taken { return false }
         taken = true
         return true
     }
 }
 
-/// Used on platforms with no `AuthenticationServices`, and in tests.
+/// Used on platforms with no UIKit, and in tests.
 struct UnavailableWebAuthPresenter: WebAuthPresenter {
     func authenticate(url: URL, callbackHost: String, callbackPath: String,
                       switchAccount: Bool) async throws -> URL {
         throw GogError.notConfigured(
-            "Web sign-in is not available on this platform. On iOS this is "
-            + "ASWebAuthenticationSession; it requires the Associated Domains entitlement for "
-            + "\(callbackHost).")
+            "Sign-in through the Gully Games app is only available on iOS.")
     }
 }
 
-#if canImport(AuthenticationServices) && canImport(UIKit)
-import AuthenticationServices
+#if canImport(UIKit)
 import UIKit
 
-/// `ASWebAuthenticationSession`.
+/// Sign-in through the Gully Games hub APP: no web page, no email, no one-time password.
 ///
-/// ⚠️ **Never compiled here.** `AuthenticationServices` + `UIKit` only exist on an Apple
-/// target, so this file is first compiled by `xcodebuild -destination 'generic/platform=iOS'`.
-/// Deliberately plain for that reason.
+/// 1. Open `gullygames://game-auth?game_id=…&code_challenge=…`. The hub — where the player
+///    is already signed in — shows "Signing you in to <game>…", mints a code bound to this
+///    game and this PKCE challenge, and opens this game's launch link with it.
+/// 2. The link arrives through the game's normal Universal Link path and is handed here by
+///    `GogIdentity.trySignInFromLaunch(url:)`; `signInWithGog` then exchanges it WITH the
+///    verifier only this process holds.
 ///
-/// **Why this API rather than opening Safari.** Apple's TN3155 documents that a Universal
-/// Link whose domain matches the previous navigation does NOT open the app — the browser
-/// assumes the user means to keep browsing. A plain-Safari fallback therefore strands a live
-/// 120-second credential in the browser with nothing to receive it. Inside
-/// `ASWebAuthenticationSession` the session intercepts its own callback rather than relying
-/// on Universal-Link routing, so that rule does not apply.
+/// Why this is safe without a caller check like Android's: the code can only ever travel to
+/// `link.godofgaming.online/launch/<game id>`, which Apple's association file routes to the
+/// real game and nothing else — an app that opened the hub pretending to be this game would
+/// never receive the code, and could not redeem it without the verifier anyway.
 ///
-/// **Why the deployment floor is 17.4.** `Callback.https(host:path:)` arrived in iOS 17.4.
-/// Below it the only mechanism is a custom URL scheme, which design doc L1 rules out.
+/// If the hub is not installed, its App Store page opens instead and this throws
+/// `.hubNotInstalled`. If the player comes back without finishing, it throws
+/// `.signInCancelled` shortly after the game is active again.
 ///
-/// **`prefersEphemeralWebBrowserSession` is false**, so an existing hub session in Safari
-/// makes sign-in seamless. That sharing has a cost the hub must cover: it must never
-/// auto-submit on a live cookie session, or player B picking up the device is signed in as
-/// player A. See the hub brief. `switchAccount` forces an ephemeral session for the
-/// "not you?" path.
-@MainActor
-final class ASWebAuthPresenterImpl: NSObject, WebAuthPresenter,
-                                    ASWebAuthenticationPresentationContextProviding {
+/// ⚠️ **Never compiled here** (UIKit exists only on an Apple target). Deliberately plain.
+final class HubAppSignInPresenter: WebAuthPresenter, LaunchCallbackReceiver, @unchecked Sendable {
 
-    /// 🔴 `nonisolated`, and it has to be.
-    ///
-    /// `GogIdentity` is an actor, and its initialiser is synchronous and nonisolated — so the
-    /// default presenter is constructed from a nonisolated context. A `@MainActor` class gets a
-    /// `@MainActor` initialiser by default, and calling that from there is a hard Swift 6 error:
-    /// *"call to main actor-isolated initializer 'init()' in a synchronous nonisolated context"*.
-    ///
-    /// Safe because this type has **no stored properties** — `super.init()` is the whole body,
-    /// so there is no isolated state to race on. Everything that genuinely needs the main actor
-    /// (`start`, and the anchor lookup) is isolated at the member level instead.
-    ///
-    /// This was the one real defect the shim type-check caught: on Linux the whole file is
-    /// `#if canImport`-ed away, so nothing had ever checked it.
-    nonisolated override init() { super.init() }
+    /// How long to wait, once the game is active again, for the hub's link to land before
+    /// calling it a cancel. The link and the activation arrive close together, in either order.
+    static let returnGrace: TimeInterval = 2.5
 
-    nonisolated func authenticate(url: URL, callbackHost: String, callbackPath: String,
-                                  switchAccount: Bool) async throws -> URL {
-        try await MainActor.run {
-            self.start(url, callbackHost, callbackPath, switchAccount)
-        }.value
-    }
+    private let lock = NSLock()
+    private var waiting: CheckedContinuation<URL, Error>?
+    private var leftApp = false
+    /// Which attempt a delayed cancel belongs to, so it can never cancel a LATER sign-in.
+    private var attempt = 0
+    private var observers: [NSObjectProtocol] = []
 
-    /// ⚠️ `session` is deliberately a LOCAL, not a stored property.
-    ///
-    /// The famous `ASWebAuthenticationSession` bug is failing to retain it, and the reflex on
-    /// reading this is to "fix" that. Apple is explicit that it does not apply here: *"if you
-    /// have a deployment target of iOS 13 or later, the session keeps a strong reference to
-    /// itself until the authentication process completes to prevent the system from
-    /// deallocating the closure."* Our floor is 17.4. Storing it would add a reference to
-    /// manage and a stale-session hazard, and buy nothing.
-    private func start(_ url: URL, _ callbackHost: String, _ callbackPath: String,
-                       _ ephemeral: Bool) -> Task<URL, Error> {
-        Task { @MainActor in
-            // 🔴 Exactly-once on the continuation. Resuming a CheckedContinuation twice is a
-            // hard crash, not an error, and there are two resume sites that could in principle
-            // both run: the completion handler, and the `start()` failure below. Apple does not
-            // document whether a refused `start()` also invokes the handler, and "probably not"
-            // is not a basis for a fatalError in the sign-in path.
-            let resumed = OneShot()
-            return try await withCheckedThrowingContinuation { continuation in
-                let session = ASWebAuthenticationSession(
-                    url: url,
-                    callback: .https(host: callbackHost, path: callbackPath)
-                ) { callbackURL, error in
-                    guard resumed.claim() else { return }
-                    if let callbackURL {
-                        continuation.resume(returning: callbackURL)
-                        return
-                    }
-                    if let error = error as? ASWebAuthenticationSessionError,
-                       error.code == .canceledLogin {
-                        continuation.resume(throwing: GogError.signInCancelled)
-                        return
-                    }
-                    continuation.resume(throwing: GogError.network(
-                        .transport(error.map { String(describing: type(of: $0)) } ?? "unknown"),
-                        retryable: true))
-                }
-                session.presentationContextProvider = self
-                session.prefersEphemeralWebBrowserSession = ephemeral
-                if !session.start(), resumed.claim() {
-                    continuation.resume(throwing: GogError.notConfigured(
-                        "ASWebAuthenticationSession could not start. The Associated Domains "
-                        + "entitlement for \(callbackHost) is required for an https callback."))
+    func authenticate(url: URL, callbackHost: String, callbackPath: String,
+                      switchAccount: Bool) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            lock.lock()
+            // GogIdentity's in-progress guard makes this unreachable; never strand a caller.
+            let stale = waiting
+            waiting = continuation
+            leftApp = false
+            attempt += 1
+            lock.unlock()
+            stale?.resume(throwing: GogError.signInCancelled)
+
+            Task { @MainActor in
+                self.watchForReturn()
+                // `opened` is false when no installed app handles the hub's scheme — no
+                // LSApplicationQueriesSchemes entry needed, unlike canOpenURL.
+                UIApplication.shared.open(url, options: [:]) { opened in
+                    guard !opened else { return }
+                    UIApplication.shared.open(GogHosts.hubAppStoreURL, options: [:],
+                                              completionHandler: nil)
+                    self.finish(.failure(GogError.hubNotInstalled))
                 }
             }
         }
     }
 
-    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    func deliver(_ url: URL) -> Bool {
+        lock.lock()
+        guard let continuation = waiting else { lock.unlock(); return false }
+        waiting = nil
+        lock.unlock()
+        stopWatching()
+        continuation.resume(returning: url)
+        return true
+    }
+
+    private func finish(_ result: Result<URL, Error>) {
+        lock.lock()
+        let continuation = waiting
+        waiting = nil
+        lock.unlock()
+        stopWatching()
+        continuation?.resume(with: result)
+    }
+
+    private func cancel(ifStill expected: Int) {
+        lock.lock(); let same = attempt == expected; lock.unlock()
+        if same { finish(.failure(GogError.signInCancelled)) }
+    }
+
+    /// Cancel only after the player has actually LEFT for the hub and come back without a link.
+    @MainActor
+    private func watchForReturn() {
+        let center = NotificationCenter.default
+        let resign = center.addObserver(forName: UIApplication.willResignActiveNotification,
+                                        object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock(); self.leftApp = true; self.lock.unlock()
         }
+        let active = center.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                                        object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock()
+            let back = self.leftApp && self.waiting != nil
+            let current = self.attempt
+            self.lock.unlock()
+            guard back else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.returnGrace) { [weak self] in
+                self?.cancel(ifStill: current)
+            }
+        }
+        lock.lock(); observers = [resign, active]; lock.unlock()
+    }
+
+    private func stopWatching() {
+        lock.lock(); let current = observers; observers = []; lock.unlock()
+        current.forEach(NotificationCenter.default.removeObserver)
     }
 }
 #endif

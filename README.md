@@ -23,6 +23,7 @@ Sources/GOG/
   GogError.swift           THE error taxonomy — one closed enum
   GogSessionProvider.swift the token + userScope seam (identity stays outside)
   GogConfiguration.swift   base URL (one source of truth), game id, §1.5 handshake
+  PrivacyInfo.xcprivacy    Apple privacy manifest — copied into every GOG.framework slice
   Internal/
     GogTransport.swift     the network seam + the only file touching URLSession
     GogHTTP.swift          the one HTTP + parse pipeline
@@ -63,12 +64,47 @@ Tests/GOGTests/            243 tests: Android regressions, account boundary, ide
                            the Unity bridge's wire format
 scripts/
   lib/slice-assertions.sh  pure assertion functions — testable without macOS
-  selftest.sh              31 assertion tests; runs anywhere
+  selftest.sh              40 assertion tests; runs anywhere
+  check-privacy-manifest.sh fails if Sources/ uses a required-reason API the manifest omits
   stamp-version.sh         writes the version square's Swift corner
   build-xcframework.sh     archive -> create-xcframework -> VERIFY -> checksum
   verify-xcframework.sh    standalone re-verification of a built artifact
 dist/                      XCFramework output — the artifact both doors ship
 ```
+
+## App Store review: rules for every game that ships this SDK
+
+Apple reviews each game as a standalone product (guidelines 4.2.3, 4.2.6, 4.3, 3.2.2). The SDK
+is shared first-party infrastructure, like an analytics SDK; it must never make a game look
+like a template or a satellite of another app. Every iOS integration must hold to these:
+
+1. **The game works fully without GOG.** No hub installed, no account, no network: the game
+   still launches and is fully playable. Call `GOG.initialize` inside `do/catch` and carry on if
+   it throws. `signInWithGog()` runs only when the player taps a "Sign in with GOG" button,
+   never at launch and never as a gate. Coins and playtime silently do nothing while signed
+   out. (4.2.3(i): an app must work without requiring another app.)
+2. **The SDK stays invisible.** The only GOG surfaces a player can see are the system
+   sign-in sheet and the house-ad overlay. No GOG-branded menus, splash screens or "get the
+   hub" prompts injected into games: identical chrome across titles is what makes App Review
+   treat them as template apps (4.2.6).
+3. **Never reward store actions.** No coins, ads or unlocks for installing, opening or rating
+   another app. Rewarding play inside the game (finishing a level, watching an ad) is fine.
+   (3.2.2(x).)
+4. **Coins are earned, not sold outside IAP.** If GG Coins can be bought, that purchase goes
+   through Apple in-app purchase. If coins can be exchanged for real-world prizes, the game
+   shows the sweepstakes rules and the "Apple is not a sponsor" disclaimer (5.3).
+5. **Each game is its own game.** Gameplay, art, levels and name are unique per title; the SDK
+   is the only shared component. Do not ship reskins of one game as separate apps (4.3(a)).
+6. **Privacy manifest.** `PrivacyInfo.xcprivacy` ships inside the framework and declares what
+   the SDK collects (email, user ID, per-install device ID, playtime interaction, house-ad
+   impressions; no tracking) and its required-reason APIs (UserDefaults `CA92.1`, system boot
+   time `35F9.1`). The game's App Store privacy labels must include these.
+   `scripts/check-privacy-manifest.sh` keeps the manifest in step with the code.
+
+When App Review asks whether the binary shares code with other apps (their question 7/8), the
+answer is: "Yes — GOG.xcframework, our own first-party SDK for optional account sign-in, a
+cross-game coin wallet, playtime analytics and house ads. All gameplay, content and assets
+are original to this title."
 
 ## Distribution (Phase 1 memo §2, ratified)
 
@@ -251,7 +287,8 @@ cannot lie.
 ```bash
 swift build
 swift test                      # 243 tests, no network, no simulator, no Mac required
-./scripts/selftest.sh           # 31 build-script assertion tests, also anywhere
+./scripts/selftest.sh           # 40 build-script assertion tests, also anywhere
+./scripts/check-privacy-manifest.sh  # manifest declares every required-reason API used
 ./scripts/typecheck-ios-shape.sh   # 15 checks: type-check the Apple-only code, on Linux
 
 # macOS + Xcode only:

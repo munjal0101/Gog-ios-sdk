@@ -236,13 +236,15 @@ final class TwoHostSplitTests: XCTestCase {
     }
 
     // ─── the hub URL builder ─────────────────────────────────────────────────
-    func testHubURLTargetsTheHubHostAndCarriesTheChallenge() throws {
+    func testHubURLOpensTheHubAppAndCarriesTheChallenge() throws {
         let challenge = PKCEPair.generate().challenge
         let url = GogHubURL.reverseHandoff(gameId: gameId, codeChallenge: challenge)
 
-        XCTAssertEqual(url.host, GogHosts.hub, "the reverse handoff must NOT go to the link host")
-        XCTAssertEqual(url.path, "/auth")
-        XCTAssertEqual(url.scheme, "https")
+        // The hub APP, never a web page with an email one-time password.
+        XCTAssertEqual(url.scheme, "gullygames")
+        XCTAssertEqual(url.host, "game-auth")
+        XCTAssertNotEqual(url.host, GogHosts.link, "the reverse handoff must NOT go to the link host")
+        XCTAssertNotEqual(url.host, GogHosts.hub, "no web sign-in page")
 
         let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         XCTAssertEqual(items.first { $0.name == "game_id" }?.value, gameId.uuidString.lowercased())

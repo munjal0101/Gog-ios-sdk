@@ -8,5 +8,5 @@ import Foundation
 @MainActor func __gog_reachability_probe() {
     _ = KeychainSecureStore(service: "probe")   // #if canImport(Security)
     _ = UIKitAdPresenter()                      // #if canImport(UIKit)
-    _ = ASWebAuthPresenterImpl()                // #if canImport(AuthenticationServices) && UIKit
+    _ = HubAppSignInPresenter()                 // #if canImport(UIKit)
 }

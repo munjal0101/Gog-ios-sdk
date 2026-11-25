@@ -60,6 +60,26 @@ expect_fail gog_assert_version_format "0.2"
 expect_fail gog_assert_version_format "v0.2.1"
 expect_fail gog_assert_version_format "0.0.0-unstamped"
 
+echo "── privacy manifest ──"
+REAL_MANIFEST="$(cat ../Sources/GOG/PrivacyInfo.xcprivacy)"
+expect_pass gog_assert_privacy_manifest "$REAL_MANIFEST"
+expect_fail gog_assert_privacy_manifest ""
+expect_fail gog_assert_privacy_manifest "${REAL_MANIFEST//CA92.1/XXXX.1}"                 # category without its reason
+expect_fail gog_assert_privacy_manifest "${REAL_MANIFEST//NSPrivacyAccessedAPICategorySystemBootTime/Nope}"
+expect_fail gog_assert_privacy_manifest "${REAL_MANIFEST//<key>NSPrivacyTracking<\/key>/}"
+
+echo "── privacy manifest vs sources (drift guard) ──"
+expect_pass ./check-privacy-manifest.sh
+FIX="$(mktemp -d)"
+printf '<plist><key>NSPrivacyTracking</key><string>NSPrivacyAccessedAPICategoryUserDefaults</string></plist>' > "$FIX/m.xcprivacy"
+printf 'let d = UserDefaults.standard\n' > "$FIX/A.swift"
+expect_pass ./check-privacy-manifest.sh "$FIX" "$FIX/m.xcprivacy"                 # used + declared
+printf 'let t = ProcessInfo.processInfo.systemUptime\n' > "$FIX/B.swift"
+expect_fail ./check-privacy-manifest.sh "$FIX" "$FIX/m.xcprivacy"                 # used, NOT declared
+rm "$FIX/B.swift"; printf '/// mentions systemUptime in a doc comment only\n' > "$FIX/C.swift"
+expect_pass ./check-privacy-manifest.sh "$FIX" "$FIX/m.xcprivacy"                 # comments don't count
+rm -rf "$FIX"
+
 echo
 echo "selftest: $pass passed, $fail failed"
 [[ $fail -eq 0 ]]

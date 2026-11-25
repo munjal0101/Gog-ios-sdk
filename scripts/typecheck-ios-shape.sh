@@ -62,7 +62,7 @@ if [[ "${1:-}" == "--selftest" || "${1:-}" == "" ]]; then
   cp "$SHAPE/reachability.swift" "$WORK/src/__reachability.swift"
   if swiftc -typecheck -swift-version 6 -module-name GOG -I "$WORK/out" \
        $(find "$WORK/src" -name '*.swift' | sort) 2>"$WORK/reach.err"; then
-    ok "KeychainSecureStore / UIKitAdPresenter / ASWebAuthPresenterImpl all resolve"
+    ok "KeychainSecureStore / UIKitAdPresenter / HubAppSignInPresenter all resolve"
   else
     bad "a guarded branch is NOT being compiled"; grep -E "error:" "$WORK/reach.err" | head -5
   fi
@@ -81,7 +81,7 @@ if [[ "${1:-}" == "--selftest" || "${1:-}" == "" ]]; then
   canary Internal/GogLog.swift           '#if canImport(os)'
   canary Ads/UIKitAdPresenter.swift      '#if canImport(UIKit) && !os(watchOS)'
   canary Playtime/PlaytimeAutoHook.swift '#if canImport(UIKit)'
-  canary Identity/WebAuthPresenter.swift '#if canImport(AuthenticationServices) && canImport(UIKit)'
+  canary Identity/WebAuthPresenter.swift '#if canImport(UIKit)'
   canary Identity/SecureStore.swift      '#if canImport(Security)'
   python3 "$SHAPE/prepare.py" "$ROOT/Sources/GOG" "$WORK/src" >/dev/null
 fi

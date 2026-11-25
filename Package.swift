@@ -46,7 +46,11 @@ let package = Package(
         .library(name: "GOG", type: .dynamic, targets: ["GOG"]),
     ],
     targets: [
-        .target(name: "GOG", path: "Sources/GOG"),
+        // The privacy manifest is a resource so SPM source consumers get it too; the XCFramework
+        // build also copies it to the root of each GOG.framework slice (build-xcframework.sh),
+        // which is where Apple reads it for a binary SDK.
+        .target(name: "GOG", path: "Sources/GOG",
+                resources: [.copy("PrivacyInfo.xcprivacy")]),
         .testTarget(name: "GOGTests", dependencies: ["GOG"], path: "Tests/GOGTests"),
     ]
 )
